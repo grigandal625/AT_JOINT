@@ -1,0 +1,12 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+at-queue = {git = "https://github.com/grigandal625/AT_QUEUE.git"}
+
+[dev-packages]
+
+[requires]
+python_version = "3.10"

@@ -1,0 +1,12 @@
+aio-pika==9.4.1
+aiormq==6.8.0
+at-queue @ git+https://github.com/grigandal625/AT_QUEUE.git@2c16fcdccc64df0c98ef12d4071e0f2751f0830c
+attrs==23.2.0
+idna==3.7
+jsonschema==4.21.1
+jsonschema-specifications==2023.12.1
+multidict==6.0.5
+pamqp==3.3.0
+referencing==0.34.0
+rpds-py==0.18.0
+yarl==1.9.4
