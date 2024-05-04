@@ -29,7 +29,7 @@ with pathlib.Path('requirements.txt').open() as requirements_txt:
 if __name__ == '__main__':
     setup(
         name='at-joint',
-        version=os.getenv('PACKAGE_VERSION', '0.0.dev0'),
+        version=os.getenv('PACKAGE_VERSION', '0.0.dev1'),
         packages=find_packages(where='src'),
         package_dir={'': 'src'},
         description='AT-TECHNOLOGY Component for joint functioning of simulation model, temporal solver and AT-SOLVER.',
