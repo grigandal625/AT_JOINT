@@ -225,6 +225,11 @@ class ATJoint(ATComponent):
             {'items': solver_items},
             auth_token=auth_token
         )
+        return {
+            'at_simulation': resource_parameters,
+            'at_temporal_solver': temporal_result,
+            'at_solver': solver_result,
+        }
 
     @authorized_method
     def get_config(self, auth_token: str) -> dict:

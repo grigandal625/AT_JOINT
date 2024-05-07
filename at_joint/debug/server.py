@@ -53,6 +53,19 @@ async def get_inspector() -> ATRegistryInspector:
 app = FastAPI()
 
 
+@app.get('/api/process_tact')
+async def process_tact(*, token: str):
+    inspector = await get_inspector()
+    if not inspector.started:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Inspector is not started")
+    if not await inspector.check_external_registered('ATJoint'):
+        raise HTTPException(status.HTTP_406_NOT_ACCEPTABLE, detail='ATJoint is not registered')
+    if not await inspector.check_external_configured('ATJoint', auth_token=token):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail='ATJoint is not configured for provided token')
+    result = await inspector.exec_external_method('ATJoint', 'process_tact', {}, auth_token=token)
+    return result
+
+
 @app.get('/api/state')
 async def state(*, token: str):
     inspector = await get_inspector()
