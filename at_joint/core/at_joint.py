@@ -154,7 +154,7 @@ class ATJoint(ATComponent):
                     auth_token=auth_token
                 )
                 return temporal_result
-        return {'wm': {}, 'timeline': {'tacts': []}, 'signified': {}}
+        return {'wm': {}, 'timeline': {'tacts': []}, 'signified': {}, 'signified_meta': {}}
 
     async def process_solver(self, auth_token: str):
         if await self.check_external_registered(c_set.at_solver):
@@ -225,3 +225,8 @@ class ATJoint(ATComponent):
             {'items': solver_items},
             auth_token=auth_token
         )
+
+    @authorized_method
+    def get_config(self, auth_token: str) -> dict:
+        c_set = self.get_component_set(auth_token=auth_token)
+        return c_set.__dict__
