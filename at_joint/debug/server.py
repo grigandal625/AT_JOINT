@@ -67,6 +67,24 @@ async def state(*, token: str):
         "at_blackboard": {},
     }
 
+    if not await inspector.check_external_registered('ATJoint'):
+        result['at_joint']['registered'] = False
+
+    else:
+        result['at_joint']['registered'] = True
+
+        if not await inspector.check_external_configured('ATJoint', auth_token=token):
+            result['at_joint']['configured'] = False
+        else:
+            result['at_joint']['configured'] = True
+
+            components = await inspector.exec_external_method('ATJoint', 'get_config', {}, auth_token=token)
+            for cmp in result:
+                if cmp in components:
+                    result[cmp]['registered'] = await inspector.check_external_registered(components[cmp])
+                    if result[cmp]['registered']:
+                        result[cmp]['configured'] = await inspector.check_external_configured(components[cmp], auth_token=token)
+
     return result
 
 
