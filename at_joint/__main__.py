@@ -5,8 +5,8 @@ import asyncio
 import logging
 
 parser = argparse.ArgumentParser(
-    prog='at-temporal-solver',
-    description='General working memory for AT-TECHNOLOGY components')
+    prog='at-joint',
+    description='Joint functioning component for AT_SIMULATION, AT_TEMPORAL_SOLVER and AT_SOLVER')
 
 parser.add_argument('-u', '--url', help="RabbitMQ URL to connect", required=False, default=None)
 parser.add_argument('-H', '--host', help="RabbitMQ host to connect", required=False, default="localhost")
@@ -15,10 +15,6 @@ parser.add_argument('-L', '--login', '-U', '--user', '--user-name', '--username'
 parser.add_argument('-P', '--password', help="RabbitMQ password to connect", required=False, default="guest")
 parser.add_argument('-v',  '--virtualhost', '--virtual-host', '--virtual_host', dest="virtualhost", help="RabbitMQ virtual host to connect", required=False, default="/")
 
-# parser.add_argument('--solver', '--at-solver', dest="at_solver", help="AT-SOLVER Component inner name (alias)", required=False, default=AT_SOLVER)
-# parser.add_argument('--temporal-solver', '--at-temporal-solver', dest="at_temporal_solver", help="AT-TEMPORAL-SOLVER Component inner name (alias)", required=False, default=AT_TEMPORAL_SOLVER)
-# parser.add_argument('--simulation', '--at-simulation', dest="at_simulation", help="AT-SIMULATION Component inner name (alias)", required=False, default=AT_SIMULATION)
-# parser.add_argument('--blackboard', '--at-blackboard', dest="at_blackboard", help="AT-BLACKBOARD Component inner name (alias)", required=False, default=AT_BLACKBOARD)
 
 async def main(**connection_kwargs):
     connection_parameters = ConnectionParameters(**connection_kwargs)
