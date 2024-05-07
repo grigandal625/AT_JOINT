@@ -1,9 +1,15 @@
 from at_queue.core.at_registry import ATRegistryInspector
 from at_queue.core.session import ConnectionParameters, ConnectionKwargs
 import argparse
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, Query, Cookie, WebSocketException, status, HTTPException, Depends
 from uvicorn import Config, Server
 import asyncio
+from typing import Annotated, Union
+from uuid import uuid3, NAMESPACE_OID
+
+
+QUEUE_NAME = 'at-joint-debugger-' + str(uuid3(NAMESPACE_OID, 'at-joint-debugger'))
+
 
 class GLOBAL:
     inspector: ATRegistryInspector = None
@@ -45,6 +51,59 @@ async def get_inspector() -> ATRegistryInspector:
 
 
 app = FastAPI()
+
+
+@app.get('/api/state')
+async def state(*, token: str):
+    inspector = await get_inspector()
+    if not inspector.started:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Inspector is not started")
+    
+    result = {
+        "at_joint": {},
+        "at_solver": {},
+        "at_temporal_solver": {},
+        "at_simulation": {},
+        "at_blackboard": {},
+    }
+
+    return result
+
+
+async def get_cookie_or_token(
+    websocket: WebSocket,
+    session: Annotated[Union[str, None], Cookie()] = None,
+    token: Annotated[Union[str, None], Query()] = None,
+):
+    if session is None and token is None:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+    return session or token
+
+
+@app.websocket("/api/ws")
+async def websocket_endpoint(
+    *,
+    websocket: WebSocket,
+    cookie_or_token: Annotated[str, Depends(get_cookie_or_token)],
+):
+    await websocket.accept()
+    inspector = await get_inspector()
+    if not inspector.started:
+        raise WebSocketException(status=status.WS_1013_TRY_AGAIN_LATER, reason="Inspector is not started")
+    args = get_args()
+    args.pop('debugger_host', None)
+    args.pop('debugger_port', None)
+    connection_parameters = ConnectionParameters(**args)
+
+    connection = await connection_parameters.connect_robust()
+    async with connection:
+        channel = await connection.channel()
+        queue = await channel.declare_queue(QUEUE_NAME)
+        async for message in queue:
+            if message.headers.get('auth_token') == cookie_or_token:
+                await message.ack()
+                data = message.body.decode('utf-8')
+                await websocket.send_text(data)
 
 
 async def main():
