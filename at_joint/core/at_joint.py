@@ -10,11 +10,12 @@ from aio_pika.abc import AbstractConnection, AbstractChannel, AbstractQueue
 from aio_pika import Message
 from at_joint.debug.server import QUEUE_NAME
 import json
+import asyncio
 
 AT_SOLVER = 'ATSolver'
 AT_TEMPORAL_SOLVER = 'ATTemporalSolver'
 AT_SIMULATION = 'ATSimulation'
-AT_BLACKBOARD = 'ATBlackboard'
+AT_BLACKBOARD = 'ATBlackBoard'
 
 
 @dataclass
@@ -130,7 +131,7 @@ class ATJoint(ATComponent):
                 resource_parameters = await self.exec_external_method(
                     c_set.at_simulation,
                     'process_tact',
-                    {},
+                    { 'recycle': True },
                     auth_token=auth_token
                 )
                 return resource_parameters
@@ -157,6 +158,7 @@ class ATJoint(ATComponent):
         return {'wm': {}, 'timeline': {'tacts': []}, 'signified': {}, 'signified_meta': {}}
 
     async def process_solver(self, auth_token: str):
+        c_set = self.get_component_set(auth_token)
         if await self.check_external_registered(c_set.at_solver):
             if await self.check_external_configured(c_set.at_solver, auth_token=auth_token):
                 c_set = self.get_component_set(auth_token)
@@ -190,46 +192,51 @@ class ATJoint(ATComponent):
         )
     
     @authorized_method
-    async def process_tact(self, auth_token: str = None):
-        
+    async def process_tact(self, iterate: int = 1, wait: int = 1000, auth_token: str = None):
+        result = []
         c_set = self.get_component_set(auth_token)
-        resource_parameters = await self.process_simulation(auth_token=auth_token)
-        await self.debug('at_simulation', resource_parameters, auth_token)
-        items = self._items_from_resource_parameters(resource_parameters)
+        for tact in range(iterate):
+            resource_parameters = await self.process_simulation(auth_token=auth_token)
+            await self.debug('at_simulation', resource_parameters, auth_token)
+            items = self._items_from_resource_parameters(resource_parameters)
 
-        await self.exec_external_method(
-            c_set.at_blackboard,
-            'set_items',
-            {'items': items},
-            auth_token=auth_token
-        )
+            await self.exec_external_method(
+                c_set.at_blackboard,
+                'set_items',
+                {'items': items},
+                auth_token=auth_token
+            )
 
-        temporal_result = await self.process_temporal_solver(auth_token=auth_token)
-        await self.debug('at_temporal_solver', temporal_result, auth_token)
-        temporal_items = [{'ref': key, 'value': value} 
-                          for key, value in temporal_result.get('signified', {}).items()]
-        await self.exec_external_method(
-            c_set.at_blackboard,
-            'set_items',
-            {'items': temporal_items},
-            auth_token=auth_token
-        )
+            temporal_result = await self.process_temporal_solver(auth_token=auth_token)
+            await self.debug('at_temporal_solver', temporal_result, auth_token)
+            temporal_items = [{'ref': key, 'value': value} 
+                            for key, value in temporal_result.get('signified', {}).items()]
+            await self.exec_external_method(
+                c_set.at_blackboard,
+                'set_items',
+                {'items': temporal_items},
+                auth_token=auth_token
+            )
 
-        solver_result = await self.process_solver(auth_token)
-        await self.debug('at_solver', solver_result, auth_token)
-        solver_items = self._items_from_solver_result(solver_result)
+            solver_result = await self.process_solver(auth_token)
+            await self.debug('at_solver', solver_result, auth_token)
+            solver_items = self._items_from_solver_result(solver_result)
 
-        await self.exec_external_method(
-            c_set.at_blackboard,
-            'set_items',
-            {'items': solver_items},
-            auth_token=auth_token
-        )
-        return {
-            'at_simulation': resource_parameters,
-            'at_temporal_solver': temporal_result,
-            'at_solver': solver_result,
-        }
+            await self.exec_external_method(
+                c_set.at_blackboard,
+                'set_items',
+                {'items': solver_items},
+                auth_token=auth_token
+            )
+            result.append({
+                'tact': tact,
+                'at_simulation': resource_parameters,
+                'at_temporal_solver': temporal_result,
+                'at_solver': solver_result,
+            })
+            if iterate > 1:
+                await asyncio.sleep(wait / 1000)
+        return result
 
     @authorized_method
     def get_config(self, auth_token: str) -> dict:

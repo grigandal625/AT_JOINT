@@ -1,6 +1,7 @@
 import argparse
 from at_queue.core.session import ConnectionParameters
 from at_joint.core.at_joint import ATJoint
+from at_joint.debug.server import main as debugger_main
 import asyncio
 import logging
 
@@ -16,6 +17,10 @@ parser.add_argument('-P', '--password', help="RabbitMQ password to connect", req
 parser.add_argument('-v',  '--virtualhost', '--virtual-host', '--virtual_host', dest="virtualhost", help="RabbitMQ virtual host to connect", required=False, default="/")
 
 
+parser.add_argument('-d', '--debugger', action='store_true', dest="debugger", help="Start only debugger server")
+parser.add_argument('-dh', '--debugger-host', dest="debugger_host", help="Debugger server host", required=False, default="127.0.0.1")
+parser.add_argument('-dp', '--debugger-port', dest="debugger_port", help="Debugger server port", type=int, required=False, default=8000)
+
 async def main(**connection_kwargs):
     connection_parameters = ConnectionParameters(**connection_kwargs)
     joint = ATJoint(connection_parameters=connection_parameters)
@@ -29,4 +34,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args_dict = vars(args)
 
-    asyncio.run(main(**args_dict))
+    if args_dict.pop('debugger', False):
+        asyncio.run(debugger_main())
+    else:
+        asyncio.run(main(**args_dict))
