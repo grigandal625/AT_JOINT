@@ -2,6 +2,7 @@ from at_queue.core.at_registry import ATRegistryInspector
 from at_queue.core.session import ConnectionParameters, ConnectionKwargs
 import argparse
 from fastapi import FastAPI, WebSocket, Query, Cookie, WebSocketException, status, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from uvicorn import Config, Server
 import asyncio
 from typing import Annotated, Union
@@ -57,6 +58,14 @@ async def get_inspector() -> ATRegistryInspector:
 app = FastAPI()
 
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.post('/api/process_tact')
 async def process_tact(*, token: str, body: ProcessTactModel):
     inspector = await get_inspector()
@@ -95,7 +104,6 @@ async def state(*, token: str):
 
     if not await inspector.check_external_registered('ATJoint'):
         result['at_joint']['registered'] = False
-
     else:
         result['at_joint']['registered'] = True
 

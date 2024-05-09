@@ -236,6 +236,7 @@ class ATJoint(ATComponent):
             })
             if iterate > 1:
                 await asyncio.sleep(wait / 1000)
+        await self.debug('at_joint', {'stop': True}, auth_token)
         return result
 
     @authorized_method
