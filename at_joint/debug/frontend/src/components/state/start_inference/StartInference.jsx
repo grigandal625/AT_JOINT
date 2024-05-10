@@ -18,7 +18,7 @@ const StartInference = ({ token, inferenceNow, setInferenceNow, exit }) => {
     };
 
     return (
-        <Form disabled={inferenceNow} onFinish={onFinish} layout="inline">
+        <Form disabled={inferenceNow} initialValues={{ iterate: 1, wait: 500 }} onFinish={onFinish} layout="inline">
             <Form.Item name="iterate" label="Количество тактов">
                 <InputNumber min={1} step={1} />
             </Form.Item>

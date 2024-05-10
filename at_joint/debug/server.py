@@ -1,20 +1,30 @@
 from at_queue.core.at_registry import ATRegistryInspector
 from at_queue.core.session import ConnectionParameters, ConnectionKwargs
 import argparse
-from fastapi import FastAPI, WebSocket, Query, Cookie, WebSocketException, status, HTTPException, Depends
+from fastapi import FastAPI, WebSocket, Query, Cookie, WebSocketException, status, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from uvicorn import Config, Server
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from hypercorn.config import Config
+from hypercorn.asyncio import serve
 import asyncio
 from typing import Annotated, Union
 from uuid import uuid3, NAMESPACE_OID
 from at_joint.debug.models import ProcessTactModel
+from pathlib import Path
+import os
+import aio_pika
 
 
-QUEUE_NAME = 'at-joint-debugger-' + str(uuid3(NAMESPACE_OID, 'at-joint-debugger'))
+EXCHANGE_NAME = 'at-joint-debugger-' + str(uuid3(NAMESPACE_OID, 'at-joint-debugger'))
 
 
 class GLOBAL:
     inspector: ATRegistryInspector = None
+
+
+CURRENT_FILE_PATH = Path(__file__).resolve()
 
 
 def get_args() -> dict:
@@ -65,6 +75,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+templates = Jinja2Templates(directory=os.path.join(CURRENT_FILE_PATH.parent, 'frontend/build'))
+
+
+app.mount("/static", StaticFiles(directory=os.path.join(CURRENT_FILE_PATH.parent, "frontend/build/static")), name="static")
+
 
 @app.post('/api/process_tact')
 async def process_tact(*, token: str, body: ProcessTactModel):
@@ -150,12 +167,25 @@ async def websocket_endpoint(
     connection = await connection_parameters.connect_robust()
     async with connection:
         channel = await connection.channel()
-        queue = await channel.declare_queue(QUEUE_NAME)
-        async for message in queue:
-            if message.headers.get('auth_token') == cookie_or_token:
-                await message.ack()
-                data = message.body.decode('utf-8')
-                await websocket.send_text(data)
+        await channel.declare_exchange(
+            EXCHANGE_NAME, aio_pika.ExchangeType.FANOUT
+        )
+        
+        queue = await channel.declare_queue(exclusive=True)
+        await queue.bind(EXCHANGE_NAME)
+
+        async with queue.iterator() as queue_iter:
+            async for message in queue_iter:
+                async with message.process():
+                    if message.headers.get('auth_token') == cookie_or_token:
+                        data = message.body.decode('utf-8')
+                        await websocket.send_text(data)
+                
+
+
+@app.get('/')
+async def index(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
 async def main():
@@ -172,9 +202,9 @@ async def main():
     if not isinstance(debugger_port, int):
         debugger_port = int(debugger_port)
 
-    config = Config(app, host=debugger_host, port=debugger_port, loop=loop)
-    server = Server(config)
-    await server.serve()
+    config = Config()
+    config.bind = [f"{debugger_host}:{debugger_port}"]
+    loop.create_task(serve(app, config=config))
     if inspector_task is not None:
         await inspector_task
 

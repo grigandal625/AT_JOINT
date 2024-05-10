@@ -6,11 +6,14 @@ from at_queue.core.session import ConnectionParameters
 from at_queue.utils.decorators import authorized_method
 from dataclasses import dataclass
 from typing import Dict, Union, List
-from aio_pika.abc import AbstractConnection, AbstractChannel, AbstractQueue
+from aio_pika.abc import AbstractConnection, AbstractChannel, AbstractExchange
 from aio_pika import Message
-from at_joint.debug.server import QUEUE_NAME
+from at_joint.debug.server import EXCHANGE_NAME
 import json
 import asyncio
+import datetime
+import aio_pika
+
 
 AT_SOLVER = 'ATSolver'
 AT_TEMPORAL_SOLVER = 'ATTemporalSolver'
@@ -30,7 +33,7 @@ class ATJoint(ATComponent):
     component_sets: Dict[str, ComponentSet]
     debug_connection: AbstractConnection
     debug_channel: AbstractChannel
-    debug_queue: AbstractQueue
+    debug_exchange: AbstractExchange
 
     def __init__(self, connection_parameters: ConnectionParameters, *args, **kwargs):
         super().__init__(connection_parameters, *args, **kwargs)
@@ -40,7 +43,9 @@ class ATJoint(ATComponent):
         res = await super().initialize()
         self.debug_connection = await self.register_session.connection_parameters.connect_robust()
         self.debug_channel = await self.debug_connection.channel()
-        self.debug_queue = await self.debug_channel.declare_queue(QUEUE_NAME)
+        self.debug_exchange = await self.debug_channel.declare_exchange(
+            EXCHANGE_NAME, aio_pika.ExchangeType.FANOUT
+        )
         return res
 
     async def perform_configurate(self, config: ATComponentConfig, auth_token: str = None, *args, **kwargs) -> bool:
@@ -183,12 +188,16 @@ class ATJoint(ATComponent):
             'initiator': initiator,
             'data': data
         }
-        await self.debug_channel.default_exchange.publish(
+
+        expiration = datetime.datetime.now() + datetime.timedelta(seconds=10)
+        
+        await self.debug_exchange.publish(
             Message(
                 json.dumps(msg_data, ensure_ascii=False).encode(),
-                headers={'auth_token': auth_token}
+                headers={'auth_token': auth_token},
+                expiration=expiration
             ),
-            routing_key=QUEUE_NAME
+            routing_key=''
         )
     
     @authorized_method

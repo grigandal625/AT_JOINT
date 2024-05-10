@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "at-joint"
-version = "0.1.dev0"
+version = "0.1.dev1"
 description = ""
 authors = ["grigadnal625 <grigandal625@gmail.com>"]
 readme = "README.md"
@@ -9,8 +9,8 @@ readme = "README.md"
 python = "^3.10"
 at-queue = {git = "https://github.com/grigandal625/AT_QUEUE.git", rev = "master"}
 fastapi = "^0.111.0"
-uvicorn = "^0.29.0"
 websocket = "^0.2.1"
+hypercorn = "^0.16.0"
 
 
 [build-system]

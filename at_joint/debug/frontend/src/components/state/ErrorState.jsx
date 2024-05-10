@@ -16,8 +16,10 @@ const components = {
     at_blackboard: "Динамическая классная доска",
 };
 
-const ErrorState = ({ token, componentsState, loadComponentState, setComponentState }) => {
+const ErrorState = ({ token, componentsState, loadComponentState, setComponentsState }) => {
     const navigate = useNavigate();
+    const dataSource = Object.entries(componentsState).map(([key, value]) => ({ component: key, ...value }));
+    debugger;
     return (
         <div>
             <Row wrap={false}>
@@ -30,8 +32,8 @@ const ErrorState = ({ token, componentsState, loadComponentState, setComponentSt
                             icon={<RetweetOutlined />}
                             type="primary"
                             onClick={() => {
-                                setComponentState(null);
-                                loadComponentState(token, setComponentState);
+                                setComponentsState(null);
+                                loadComponentState(token, setComponentsState);
                             }}
                         >
                             Проверить компоненты повторно
@@ -50,13 +52,13 @@ const ErrorState = ({ token, componentsState, loadComponentState, setComponentSt
             </Row>
             <Row>
                 <Table
-                    dataSource={Object.entries(componentsState).map(([key, value]) => ({ component: key, ...value }))}
+                    dataSource={dataSource}
                     columns={[
                         { title: "Компонент", render: (data) => components[data.component] },
                         {
                             title: "Статус регистрации",
                             dataIndex: "registered",
-                            render: (data) =>
+                            render: (_, data) =>
                                 data.hasOwnProperty("registered") ? (
                                     data.registered ? (
                                         <Tag icon={<CheckCircleOutlined />} color="green">
@@ -77,7 +79,7 @@ const ErrorState = ({ token, componentsState, loadComponentState, setComponentSt
                         {
                             title: "Статус конфигурации",
                             dataIndex: "configured",
-                            render: (data) =>
+                            render: (_, data) =>
                                 data.hasOwnProperty("configured") ? (
                                     data.configured ? (
                                         <Tag icon={<CheckCircleOutlined />} color="green">

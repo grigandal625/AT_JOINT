@@ -30,11 +30,11 @@ async def main(**connection_kwargs):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
     args = parser.parse_args()
     args_dict = vars(args)
 
     if args_dict.pop('debugger', False):
         asyncio.run(debugger_main())
     else:
+        logging.basicConfig(level=logging.INFO)
         asyncio.run(main(**args_dict))

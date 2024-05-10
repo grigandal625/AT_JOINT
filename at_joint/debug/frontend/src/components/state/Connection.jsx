@@ -107,7 +107,7 @@ const Connection = ({ token }) => {
                 {settings.atSimulation ? (
                     <Col>
                         <Card title="Подсистема имитационного моделирования">
-                            <ATSimulation show={settings.atSimulation} atSimulation={atSimulation.data} />
+                            <ATSimulation inferenceNow={inferenceNow} atSimulation={atSimulation?.data} />
                         </Card>
                     </Col>
                 ) : (
@@ -117,8 +117,8 @@ const Connection = ({ token }) => {
                     <Col>
                         <Card title="Темпоральный решатель">
                             <ATTemporalSolver
-                                show={settings.atTemporalSolver}
-                                atTemporalSolver={atTemporalSolver.data}
+                                inferenceNow={inferenceNow}
+                                atTemporalSolver={atTemporalSolver?.data}
                             />
                         </Card>
                     </Col>
@@ -128,7 +128,7 @@ const Connection = ({ token }) => {
                 {settings.atSolver ? (
                     <Col>
                         <Card title="АТ-РЕШАТЕЛЬ">
-                            <ATSolver show={settings.atSolver} atSolver={atSolver.data} />
+                            <ATSolver inferenceNow={inferenceNow} atSolver={atSolver?.data} />
                         </Card>
                     </Col>
                 ) : (
