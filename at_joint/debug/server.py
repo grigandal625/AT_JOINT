@@ -243,6 +243,13 @@ async def main():
     config = Config()
     config.bind = [f"{debugger_host}:{debugger_port}"]
     loop.create_task(serve(app, config=config))
+
+    if not os.path.exists('/var/run/at_joint_debugger/'):
+        os.makedirs('/var/run/at_joint_debugger/')
+
+    with open('/var/run/at_joint_debugger/pidfile.pid', 'w') as f:
+        f.write(str(os.getpid()))
+
     if inspector_task is not None:
         await inspector_task
 

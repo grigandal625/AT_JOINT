@@ -4,10 +4,11 @@ from at_joint.core.at_joint import ATJoint
 from at_joint.debug.server import main as debugger_main
 import asyncio
 import logging
+import os
 
 parser = argparse.ArgumentParser(
     prog='at-joint',
-    description='Joint functioning component for AT_SIMULATION, AT_TEMPORAL_SOLVER and AT_SOLVER')
+    description='Joint functioning component for AT_SIMULATION, AT_TEMPORAL_SOLVER and at_joint')
 
 parser.add_argument('-u', '--url', help="RabbitMQ URL to connect", required=False, default=None)
 parser.add_argument('-H', '--host', help="RabbitMQ host to connect", required=False, default="localhost")
@@ -26,6 +27,13 @@ async def main(**connection_kwargs):
     joint = ATJoint(connection_parameters=connection_parameters)
     await joint.initialize()
     await joint.register()
+
+    if not os.path.exists('/var/run/at_joint/'):
+        os.makedirs('/var/run/at_joint/')
+
+    with open('/var/run/at_joint/pidfile.pid', 'w') as f:
+        f.write(str(os.getpid()))
+
     await joint.start()
 
 
