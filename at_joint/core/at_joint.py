@@ -31,6 +31,7 @@ class ComponentSet:
 
 class ATJoint(ATComponent):
     component_sets: Dict[str, ComponentSet]
+    stop_command: Dict[str, Union[bool, None]]
     debug_connection: AbstractConnection
     debug_channel: AbstractChannel
     debug_exchange: AbstractExchange
@@ -38,6 +39,7 @@ class ATJoint(ATComponent):
     def __init__(self, connection_parameters: ConnectionParameters, *args, **kwargs):
         super().__init__(connection_parameters, *args, **kwargs)
         self.component_sets = {}
+        self.stop_command = {}
 
     async def initialize(self):
         res = await super().initialize()
@@ -99,6 +101,10 @@ class ATJoint(ATComponent):
         if component_set is None:
             raise ValueError("Component set (solver, temporal solver, simulation model) for token '%s' is not created" % auth_token)
         return component_set
+    
+    def get_stop_command(self, auth_token: str = None):
+        auth_token = auth_token or 'default'
+        return self.stop_command.get(auth_token, False)
     
     def has_component_set(self, auth_token: str = None):
         try:
@@ -201,10 +207,21 @@ class ATJoint(ATComponent):
         )
     
     @authorized_method
+    async def stop(self, auth_token: str = None):
+        auth_token = auth_token or 'default'
+        self.stop_command[auth_token] = True
+
+    @authorized_method
     async def process_tact(self, iterate: int = 1, wait: int = 1000, auth_token: str = None):
         result = []
+        auth_token = auth_token or 'default'
+        self.stop_command[auth_token] = False
         c_set = self.get_component_set(auth_token)
         for tact in range(iterate):
+            
+            if self.get_stop_command(auth_token):
+                break
+            
             resource_parameters = await self.process_simulation(auth_token=auth_token)
             await self.debug('at_simulation', resource_parameters, auth_token)
             items = self._items_from_resource_parameters(resource_parameters)
@@ -216,6 +233,9 @@ class ATJoint(ATComponent):
                 auth_token=auth_token
             )
 
+            if self.get_stop_command(auth_token):
+                break
+            
             temporal_result = await self.process_temporal_solver(auth_token=auth_token)
             await self.debug('at_temporal_solver', temporal_result, auth_token)
             temporal_items = [{'ref': key, 'value': value} 
@@ -226,6 +246,9 @@ class ATJoint(ATComponent):
                 {'items': temporal_items},
                 auth_token=auth_token
             )
+
+            if self.get_stop_command(auth_token):
+                break
 
             solver_result = await self.process_solver(auth_token)
             await self.debug('at_solver', solver_result, auth_token)

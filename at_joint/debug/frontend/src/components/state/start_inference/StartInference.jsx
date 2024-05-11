@@ -1,7 +1,7 @@
 import { LogoutOutlined, PlayCircleOutlined } from "@ant-design/icons";
-import { Form, InputNumber, Button, Space } from "antd";
+import { Form, InputNumber, Button, Row, Col } from "antd";
 
-const StartInference = ({ token, inferenceNow, setInferenceNow, exit }) => {
+const StartInference = ({ token, inferenceNow, setInferenceNow, exit, asRow, gutter }) => {
     const onFinish = async (values) => {
         const url = process.env.REACT_APP_API_URL || "";
         const response = await fetch(`${url}/api/process_tact?token=${token}`, {
@@ -17,26 +17,34 @@ const StartInference = ({ token, inferenceNow, setInferenceNow, exit }) => {
         }
     };
 
-    return (
+    const mainForm = (
         <Form disabled={inferenceNow} initialValues={{ iterate: 1, wait: 500 }} onFinish={onFinish} layout="inline">
-            <Form.Item name="iterate" label="Количество тактов">
-                <InputNumber min={1} step={1} />
-            </Form.Item>
-            <Form.Item name="wait" label="Ожидание между тактами (миллисикунд)">
-                <InputNumber min={0} step={1} />
-            </Form.Item>
-            <Space>
+            <Col>
+                <Form.Item name="iterate" label="Количество тактов">
+                    <InputNumber min={1} step={1} />
+                </Form.Item>
+            </Col>
+            <Col>
+                <Form.Item name="wait" label="Ожидание между тактами (миллисикунд)">
+                    <InputNumber min={0} step={1} />
+                </Form.Item>
+            </Col>
+            <Col>
                 <Form.Item>
                     <Button icon={<PlayCircleOutlined />} type="primary" htmlType="submit">
                         Запустить темпоральный вывод
                     </Button>
                 </Form.Item>
+            </Col>
+            <Col>
                 <Button icon={<LogoutOutlined />} onClick={exit}>
                     Отключиться
                 </Button>
-            </Space>
+            </Col>
         </Form>
     );
+
+    return asRow ? <Row gutter={gutter || [10, 10]}>{mainForm}</Row> : mainForm;
 };
 
 export default StartInference;

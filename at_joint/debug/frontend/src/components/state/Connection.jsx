@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { message, Row, Col, Divider, Form, Checkbox, Collapse, Card } from "antd";
+import { message, Row, Col, Divider, Form, Checkbox, Collapse, Card, Space, Button } from "antd";
 import StartInference from "./start_inference/StartInference";
 import ATSimulation from "./panels/ATSimulation";
 import ATSolver from "./panels/ATSolver";
 import ATTemporalSolver from "./panels/ATTemporalSolver";
+import { RollbackOutlined, StopOutlined } from "@ant-design/icons";
 
 const CheckboxField = ({ value, onChange }) => (
     <Checkbox checked={value} onChange={(e) => onChange(e.target.checked)} />
@@ -78,7 +79,9 @@ const Connection = ({ token }) => {
                         break;
                     case "at_joint":
                         if (data?.data?.stop) {
+                            message.info("Совместное функционирование остановлено");
                             setInferenceNow(false);
+                            setIsStopping(false);
                         }
                     default:
                         break;
@@ -89,9 +92,54 @@ const Connection = ({ token }) => {
         };
     }, [token]);
 
+    const [isStopping, setIsStopping] = useState(false);
+
+    const stopInference = async () => {
+        const url = process.env.REACT_APP_API_URL || "";
+        setIsStopping(true);
+        const response = await fetch(`${url}/api/stop?token=${token}`);
+        if (response.status === 200) {
+            message.success("Отсановка совместного функционирования запущена, ожидайте.");
+        } else {
+            message.error("Ошибка при остановке");
+            setIsStopping(false);
+        }
+    };
+
+    const reset = async () => {
+        const url = process.env.REACT_APP_API_URL || "";
+        const response = await fetch(`${url}/api/reset?token=${token}`);
+        if (response.status === 200) {
+            message.success("Сброс выполнен");
+            setAtSimulation(null);
+            setAtTemporalSolver(null);
+            setAtSolver(null);
+        } else {
+            message.error("Ошибка при сбросе");
+        }
+    };
+
     return (
         <div>
-            <StartInference token={token} inferenceNow={inferenceNow} setInferenceNow={setInferenceNow} exit={exit} />
+            <Row gutter={[10, 10]}>
+                <StartInference
+                    asRow={false}
+                    token={token}
+                    inferenceNow={inferenceNow}
+                    setInferenceNow={setInferenceNow}
+                    exit={exit}
+                />
+                <Col>
+                    <Button
+                        disabled={inferenceNow ? isStopping : false}
+                        danger
+                        icon={inferenceNow ? <StopOutlined /> : <RollbackOutlined />}
+                        onClick={inferenceNow ? stopInference : reset}
+                    >
+                        {inferenceNow ? "Стоп" : "Сброс"}
+                    </Button>
+                </Col>
+            </Row>
             <Divider />
             <Collapse
                 items={[
@@ -116,10 +164,7 @@ const Connection = ({ token }) => {
                 {settings.atTemporalSolver ? (
                     <Col>
                         <Card title="Темпоральный решатель">
-                            <ATTemporalSolver
-                                inferenceNow={inferenceNow}
-                                atTemporalSolver={atTemporalSolver?.data}
-                            />
+                            <ATTemporalSolver inferenceNow={inferenceNow} atTemporalSolver={atTemporalSolver?.data} />
                         </Card>
                     </Col>
                 ) : (

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "at-joint"
-version = "0.1.dev1"
+version = "0.1.dev3"
 description = ""
 authors = ["grigadnal625 <grigandal625@gmail.com>"]
 readme = "README.md"

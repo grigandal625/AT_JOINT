@@ -104,6 +104,44 @@ async def process_tact(*, token: str, body: ProcessTactModel):
         }
     return await task
 
+@app.get('/api/stop')
+async def stop(*, token: str):
+    inspector = await get_inspector()
+    if not inspector.started:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Inspector is not started")
+
+    if not await inspector.check_external_registered('ATJoint'):
+        raise HTTPException(status.HTTP_406_NOT_ACCEPTABLE, detail='ATJoint is not registered')
+    if not await inspector.check_external_configured('ATJoint', auth_token=token):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail='ATJoint is not configured for provided token')
+    
+    await inspector.exec_external_method('ATJoint', 'stop', {}, auth_token=token)
+    return { 'success': True }
+
+
+@app.get('/api/reset')
+async def reset(*, token: str):
+    inspector = await get_inspector()
+    if not inspector.started:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Inspector is not started")
+
+    if not await inspector.check_external_registered('ATJoint'):
+        raise HTTPException(status.HTTP_406_NOT_ACCEPTABLE, detail='ATJoint is not registered')
+
+    if not await inspector.check_external_configured('ATJoint', auth_token=token):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail='ATJoint is not configured for provided token')
+
+    components = await inspector.exec_external_method('ATJoint', 'get_config', {}, auth_token=token)
+    for cmp in ['at_simulation', 'at_temporal_solver', 'at_solver']:
+        component = components.get(cmp)
+        if not component:
+            raise HTTPException(status.HTTP_406_NOT_ACCEPTABLE, detail=f'Component {cmp} is not set up in ATJoint') 
+        if await inspector.check_external_registered(components[cmp]):
+            if await inspector.check_external_configured(components[cmp], auth_token=token):
+                await inspector.exec_external_method(component, 'reset', {}, auth_token=token)
+
+    
+    return { 'success': True }
 
 @app.get('/api/state')
 async def state(*, token: str):
@@ -183,7 +221,7 @@ async def websocket_endpoint(
                 
 
 
-@app.get('/')
+@app.get('/{path:path}')
 async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
