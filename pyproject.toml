@@ -4,6 +4,7 @@ version = "0.1.dev1"
 description = ""
 authors = ["grigadnal625 <grigandal625@gmail.com>"]
 readme = "README.md"
+exclude = ["at_joint/debug/frontend/node_modules", "at_joint/debug/frontend/node_modules/**/*"]
 
 [tool.poetry.dependencies]
 python = "^3.10"

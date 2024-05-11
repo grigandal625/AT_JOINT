@@ -1,0 +1,19 @@
+Metadata-Version: 2.1
+Name: at-joint
+Version: 0.1.0
+Summary: 
+Author: grigadnal625
+Author-email: grigandal625@gmail.com
+Requires-Python: >=3.10,<4.0
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Dist: at-queue @ git+https://github.com/grigandal625/AT_QUEUE.git@master
+Requires-Dist: fastapi (>=0.111.0,<0.112.0)
+Requires-Dist: uvicorn (>=0.29.0,<0.30.0)
+Requires-Dist: websocket (>=0.2.1,<0.3.0)
+Description-Content-Type: text/markdown
+
+# AT_JOINT
+

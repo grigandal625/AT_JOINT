@@ -1,0 +1,14 @@
+.page-header {
+    margin: 0px 48px;
+}
+
+.page-header-title {
+    margin-right: 12px;
+    margin-bottom: 0;
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 32px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
