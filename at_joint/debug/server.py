@@ -1,27 +1,60 @@
-from at_queue.core.at_registry import ATRegistryInspector
-from at_queue.core.session import ConnectionParameters, ConnectionKwargs
 import argparse
-from fastapi import FastAPI, WebSocket, Query, Cookie, WebSocketException, status, HTTPException, Depends, Request
+import asyncio
+import os
+from pathlib import Path
+from typing import Dict
+from uuid import NAMESPACE_OID
+from uuid import uuid3
+from uuid import uuid4
+
+from at_queue.core.session import ConnectionParameters
+from fastapi import FastAPI
+from fastapi import HTTPException
+from fastapi import Query
+from fastapi import Request
+from fastapi import status
+from fastapi import WebSocket
+from fastapi import WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from hypercorn.config import Config
-from hypercorn.asyncio import serve
-import asyncio
-from typing import Annotated, Union
-from uuid import uuid3, NAMESPACE_OID
+from uvicorn import Config as UviConfig
+from uvicorn import Server
+
+from at_joint.debug.debugger import ATJointDebugger
 from at_joint.debug.models import ProcessTactModel
-from pathlib import Path
-import os
-import aio_pika
 
 
-EXCHANGE_NAME = 'at-joint-debugger-' + str(uuid3(NAMESPACE_OID, 'at-joint-debugger'))
+EXCHANGE_NAME = "at-joint-debugger-" + str(uuid3(NAMESPACE_OID, "at-joint-debugger"))
+
+
+# WebSocket manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
+
+    async def connect(self, auth_token: str, session_id: str, websocket: WebSocket):
+        await websocket.accept()
+        sessions = self.active_connections.get(auth_token, {})
+        sessions[session_id] = websocket
+        self.active_connections[auth_token] = sessions
+
+    def disconnect(self, auth_token: str, session_id: str):
+        sessions = self.active_connections.get(auth_token, {})
+        sessions.pop(session_id, None)
+        self.active_connections[auth_token] = sessions
+
+    async def send_message(self, auth_token: str, message: str):
+        sessions = self.active_connections.get(auth_token, {})
+        for _, websocket in sessions.items():
+            await websocket.send_text(message)
+
+
+manager = ConnectionManager()
 
 
 class GLOBAL:
-    inspector: ATRegistryInspector = None
+    inspector: ATJointDebugger = None
 
 
 CURRENT_FILE_PATH = Path(__file__).resolve()
@@ -29,34 +62,67 @@ CURRENT_FILE_PATH = Path(__file__).resolve()
 
 def get_args() -> dict:
     parser = argparse.ArgumentParser(
-        prog='at-joint-debugger',
-        description='Debugging server for joint functioning component for AT_SIMULATION, AT_TEMPORAL_SOLVER and AT_SOLVER')
+        prog="at-joint-debugger",
+        description="Debugging server for joint functioning component "
+        "for AT_SIMULATION, AT_TEMPORAL_SOLVER and AT_SOLVER",
+    )
 
-    parser.add_argument('-u', '--url', help="RabbitMQ URL to connect", required=False, default=None)
-    parser.add_argument('-H', '--host', help="RabbitMQ host to connect", required=False, default="localhost")
-    parser.add_argument('-p', '--port', help="RabbitMQ port to connect", required=False, default=5672)
-    parser.add_argument('-L', '--login', '-U', '--user', '--user-name', '--username', '--user_name', dest="login", help="RabbitMQ login to connect", required=False, default="guest")
-    parser.add_argument('-P', '--password', help="RabbitMQ password to connect", required=False, default="guest")
-    parser.add_argument('-v',  '--virtualhost', '--virtual-host', '--virtual_host', dest="virtualhost", help="RabbitMQ virtual host to connect", required=False, default="/")
+    parser.add_argument("-u", "--url", help="RabbitMQ URL to connect", required=False, default=None)
+    parser.add_argument("-H", "--host", help="RabbitMQ host to connect", required=False, default="localhost")
+    parser.add_argument("-p", "--port", help="RabbitMQ port to connect", required=False, default=5672)
+    parser.add_argument(
+        "-L",
+        "--login",
+        "-U",
+        "--user",
+        "--user-name",
+        "--username",
+        "--user_name",
+        dest="login",
+        help="RabbitMQ login to connect",
+        required=False,
+        default="guest",
+    )
+    parser.add_argument("-P", "--password", help="RabbitMQ password to connect", required=False, default="guest")
+    parser.add_argument(
+        "-v",
+        "--virtualhost",
+        "--virtual-host",
+        "--virtual_host",
+        dest="virtualhost",
+        help="RabbitMQ virtual host to connect",
+        required=False,
+        default="/",
+    )
 
-    parser.add_argument('-d', '--debugger', action='store_true', dest="debugger", help="Start only debugger server")
-    parser.add_argument('-dh', '--debugger-host', dest="debugger_host", help="Debugger server host", required=False, default="127.0.0.1")
-    parser.add_argument('-dp', '--debugger-port', dest="debugger_port", help="Debugger server port", type=int, required=False, default=8000)
+    parser.add_argument("-d", "--debugger", action="store_true", dest="debugger", help="Start only debugger server")
+    parser.add_argument(
+        "-dh", "--debugger-host", dest="debugger_host", help="Debugger server host", required=False, default="127.0.0.1"
+    )
+    parser.add_argument(
+        "-dp",
+        "--debugger-port",
+        dest="debugger_port",
+        help="Debugger server port",
+        type=int,
+        required=False,
+        default=8000,
+    )
 
     args = parser.parse_args()
     res = vars(args)
-    res.pop('debugger', False)
+    res.pop("debugger", False)
     return res
 
 
-async def get_inspector() -> ATRegistryInspector:
+async def get_inspector() -> ATJointDebugger:
     inspector = GLOBAL.inspector
     if inspector is None:
         args = get_args()
-        args.pop('debugger_host', None)
-        args.pop('debugger_port', None)
+        args.pop("debugger_host", None)
+        args.pop("debugger_port", None)
         connection_parameters = ConnectionParameters(**args)
-        inspector = ATRegistryInspector(connection_parameters=connection_parameters)
+        inspector = ATJointDebugger(websocket_manager=manager, connection_parameters=connection_parameters)
     if not inspector.initialized:
         await inspector.initialize()
     if not inspector.registered:
@@ -77,78 +143,79 @@ app.add_middleware(
 )
 
 
-templates = Jinja2Templates(directory=os.path.join(CURRENT_FILE_PATH.parent, 'frontend/build'))
+templates = Jinja2Templates(directory=os.path.join(CURRENT_FILE_PATH.parent, "frontend/build"))
 
 
-app.mount("/static", StaticFiles(directory=os.path.join(CURRENT_FILE_PATH.parent, "frontend/build/static")), name="static")
+app.mount(
+    "/static", StaticFiles(directory=os.path.join(CURRENT_FILE_PATH.parent, "frontend/build/static")), name="static"
+)
 
 
-@app.post('/api/process_tact')
+@app.post("/api/process_tact")
 async def process_tact(*, token: str, body: ProcessTactModel):
     inspector = await get_inspector()
     if not inspector.started:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Inspector is not started")
-    if not await inspector.check_external_registered('ATJoint'):
-        raise HTTPException(status.HTTP_406_NOT_ACCEPTABLE, detail='ATJoint is not registered')
-    if not await inspector.check_external_configured('ATJoint', auth_token=token):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail='ATJoint is not configured for provided token')
-    
+    if not await inspector.check_external_registered("ATJoint"):
+        raise HTTPException(status.HTTP_406_NOT_ACCEPTABLE, detail="ATJoint is not registered")
+    if not await inspector.check_external_configured("ATJoint", auth_token=token):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="ATJoint is not configured for provided token")
+
     data = body.model_dump()
-    background = data.pop('background')
+    background = data.pop("background")
     loop = asyncio.get_event_loop()
-    task = loop.create_task(inspector.exec_external_method('ATJoint', 'process_tact', data, auth_token=token))
+    task = loop.create_task(inspector.exec_external_method("ATJoint", "process_tact", data, auth_token=token))
     if background:
         await asyncio.sleep(0)
-        return {
-            'success': True
-        }
+        return {"success": True}
     return await task
 
-@app.get('/api/stop')
+
+@app.get("/api/stop")
 async def stop(*, token: str):
     inspector = await get_inspector()
     if not inspector.started:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Inspector is not started")
 
-    if not await inspector.check_external_registered('ATJoint'):
-        raise HTTPException(status.HTTP_406_NOT_ACCEPTABLE, detail='ATJoint is not registered')
-    if not await inspector.check_external_configured('ATJoint', auth_token=token):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail='ATJoint is not configured for provided token')
-    
-    await inspector.exec_external_method('ATJoint', 'stop', {}, auth_token=token)
-    return { 'success': True }
+    if not await inspector.check_external_registered("ATJoint"):
+        raise HTTPException(status.HTTP_406_NOT_ACCEPTABLE, detail="ATJoint is not registered")
+    if not await inspector.check_external_configured("ATJoint", auth_token=token):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="ATJoint is not configured for provided token")
+
+    await inspector.exec_external_method("ATJoint", "stop", {}, auth_token=token)
+    return {"success": True}
 
 
-@app.get('/api/reset')
+@app.get("/api/reset")
 async def reset(*, token: str):
     inspector = await get_inspector()
     if not inspector.started:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Inspector is not started")
 
-    if not await inspector.check_external_registered('ATJoint'):
-        raise HTTPException(status.HTTP_406_NOT_ACCEPTABLE, detail='ATJoint is not registered')
+    if not await inspector.check_external_registered("ATJoint"):
+        raise HTTPException(status.HTTP_406_NOT_ACCEPTABLE, detail="ATJoint is not registered")
 
-    if not await inspector.check_external_configured('ATJoint', auth_token=token):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail='ATJoint is not configured for provided token')
+    if not await inspector.check_external_configured("ATJoint", auth_token=token):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="ATJoint is not configured for provided token")
 
-    components = await inspector.exec_external_method('ATJoint', 'get_config', {}, auth_token=token)
-    for cmp in ['at_simulation', 'at_temporal_solver', 'at_solver']:
+    components = await inspector.exec_external_method("ATJoint", "get_config", {}, auth_token=token)
+    for cmp in ["at_simulation", "at_temporal_solver", "at_solver"]:
         component = components.get(cmp)
         if not component:
-            raise HTTPException(status.HTTP_406_NOT_ACCEPTABLE, detail=f'Component {cmp} is not set up in ATJoint') 
+            raise HTTPException(status.HTTP_406_NOT_ACCEPTABLE, detail=f"Component {cmp} is not set up in ATJoint")
         if await inspector.check_external_registered(components[cmp]):
             if await inspector.check_external_configured(components[cmp], auth_token=token):
-                await inspector.exec_external_method(component, 'reset', {}, auth_token=token)
+                await inspector.exec_external_method(component, "reset", {}, auth_token=token)
 
-    
-    return { 'success': True }
+    return {"success": True}
 
-@app.get('/api/state')
+
+@app.get("/api/state")
 async def state(*, token: str):
     inspector = await get_inspector()
     if not inspector.started:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Inspector is not started")
-    
+
     result = {
         "at_joint": {},
         "at_solver": {},
@@ -157,71 +224,44 @@ async def state(*, token: str):
         "at_blackboard": {},
     }
 
-    if not await inspector.check_external_registered('ATJoint'):
-        result['at_joint']['registered'] = False
+    if not await inspector.check_external_registered("ATJoint"):
+        result["at_joint"]["registered"] = False
     else:
-        result['at_joint']['registered'] = True
+        result["at_joint"]["registered"] = True
 
-        if not await inspector.check_external_configured('ATJoint', auth_token=token):
-            result['at_joint']['configured'] = False
+        if not await inspector.check_external_configured("ATJoint", auth_token=token):
+            result["at_joint"]["configured"] = False
         else:
-            result['at_joint']['configured'] = True
+            result["at_joint"]["configured"] = True
 
-            components = await inspector.exec_external_method('ATJoint', 'get_config', {}, auth_token=token)
+            components = await inspector.exec_external_method("ATJoint", "get_config", {}, auth_token=token)
             for cmp in result:
                 if cmp in components:
-                    result[cmp]['registered'] = await inspector.check_external_registered(components[cmp])
-                    if result[cmp]['registered']:
-                        result[cmp]['configured'] = await inspector.check_external_configured(components[cmp], auth_token=token)
+                    result[cmp]["registered"] = await inspector.check_external_registered(components[cmp])
+                    if result[cmp]["registered"]:
+                        result[cmp]["configured"] = await inspector.check_external_configured(
+                            components[cmp], auth_token=token
+                        )
 
     return result
-
-
-async def get_cookie_or_token(
-    websocket: WebSocket,
-    session: Annotated[Union[str, None], Cookie()] = None,
-    token: Annotated[Union[str, None], Query()] = None,
-):
-    if session is None and token is None:
-        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
-    return session or token
 
 
 @app.websocket("/api/ws")
 async def websocket_endpoint(
     *,
     websocket: WebSocket,
-    cookie_or_token: Annotated[str, Depends(get_cookie_or_token)],
+    auth_token: str = Query(...),
 ):
-    await websocket.accept()
-    inspector = await get_inspector()
-    if not inspector.started:
-        raise WebSocketException(status=status.WS_1013_TRY_AGAIN_LATER, reason="Inspector is not started")
-    args = get_args()
-    args.pop('debugger_host', None)
-    args.pop('debugger_port', None)
-    connection_parameters = ConnectionParameters(**args)
-
-    connection = await connection_parameters.connect_robust()
-    async with connection:
-        channel = await connection.channel()
-        await channel.declare_exchange(
-            EXCHANGE_NAME, aio_pika.ExchangeType.FANOUT
-        )
-        
-        queue = await channel.declare_queue(exclusive=True)
-        await queue.bind(EXCHANGE_NAME)
-
-        async with queue.iterator() as queue_iter:
-            async for message in queue_iter:
-                async with message.process():
-                    if message.headers.get('auth_token') == cookie_or_token:
-                        data = message.body.decode('utf-8')
-                        await websocket.send_text(data)
-                
+    session = str(uuid4())
+    await manager.connect(auth_token, session, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(auth_token, session)
 
 
-@app.get('/{path:path}')
+@app.get("/{path:path}")
 async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
@@ -233,26 +273,29 @@ async def main():
     inspector_task = None
     if not inspector.started:
         inspector_task = loop.create_task(inspector.start())
-    
-    debugger_host = args.get('debugger_host', '127.0.0.1')
-    debugger_port = args.get('debugger_port', 8000)
+
+    debugger_host = args.get("debugger_host", "127.0.0.1")
+    debugger_port = args.get("debugger_port", 8000)
 
     if not isinstance(debugger_port, int):
         debugger_port = int(debugger_port)
 
-    config = Config()
-    config.bind = [f"{debugger_host}:{debugger_port}"]
-    loop.create_task(serve(app, config=config))
+    config = UviConfig(app, debugger_host, debugger_port, loop=loop, ws="websockets")
+    server = Server(config=config)
+    loop.create_task(server.serve())
 
-    if not os.path.exists('/var/run/at_joint_debugger/'):
-        os.makedirs('/var/run/at_joint_debugger/')
+    try:
+        if not os.path.exists("/var/run/at_joint_debugger/"):
+            os.makedirs("/var/run/at_joint_debugger/")
 
-    with open('/var/run/at_joint_debugger/pidfile.pid', 'w') as f:
-        f.write(str(os.getpid()))
+        with open("/var/run/at_joint_debugger/pidfile.pid", "w") as f:
+            f.write(str(os.getpid()))
+    except PermissionError:
+        pass
 
     if inspector_task is not None:
         await inspector_task
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

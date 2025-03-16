@@ -11,8 +11,10 @@ python = "^3.10"
 at-queue = {git = "https://github.com/grigandal625/AT_QUEUE.git", rev = "master"}
 fastapi = "^0.111.0"
 websocket = "^0.2.1"
-hypercorn = "^0.16.0"
 
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^4.1.0"
 
 [build-system]
 requires = ["poetry-core"]
