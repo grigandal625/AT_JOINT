@@ -199,13 +199,16 @@ async def reset(*, token: str):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="ATJoint is not configured for provided token")
 
     components = await inspector.exec_external_method("ATJoint", "get_config", {}, auth_token=token)
-    for cmp in ["at_simulation", "at_temporal_solver", "at_solver"]:
+    for cmp in ["at_temporal_solver", "at_solver"]:
         component = components.get(cmp)
         if not component:
             raise HTTPException(status.HTTP_406_NOT_ACCEPTABLE, detail=f"Component {cmp} is not set up in ATJoint")
         if await inspector.check_external_registered(components[cmp]):
             if await inspector.check_external_configured(components[cmp], auth_token=token):
                 await inspector.exec_external_method(component, "reset", {}, auth_token=token)
+        if await inspector.check_external_registered("ATJoint"):
+            if await inspector.check_external_configured("ATJoint"):
+                await inspector.exec_external_method("ATJoint", "reset", {}, auth_token=token)
 
     return {"success": True}
 

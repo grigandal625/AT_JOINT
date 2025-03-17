@@ -56,11 +56,14 @@ async def main(**connection_kwargs):
     await joint.initialize()
     await joint.register()
 
-    if not os.path.exists("/var/run/at_joint/"):
-        os.makedirs("/var/run/at_joint/")
+    try:
+        if not os.path.exists("/var/run/at_joint/"):
+            os.makedirs("/var/run/at_joint/")
 
-    with open("/var/run/at_joint/pidfile.pid", "w") as f:
-        f.write(str(os.getpid()))
+        with open("/var/run/at_joint/pidfile.pid", "w") as f:
+            f.write(str(os.getpid()))
+    except PermissionError:
+        pass
 
     await joint.start()
 

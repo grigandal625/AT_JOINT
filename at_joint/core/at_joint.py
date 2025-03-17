@@ -44,12 +44,14 @@ class ATJoint(ATComponent):
     component_sets: Dict[str, ComponentSet]
     stop_command: Dict[str, Union[bool, None]]
     at_simulation_processes: Dict[str, int | str]
+    at_translated_files: Dict[str, str]
 
     def __init__(self, connection_parameters: ConnectionParameters, *args, **kwargs):
         super().__init__(connection_parameters, *args, **kwargs)
         self.component_sets = {}
         self.stop_command = {}
         self.at_simulation_processes = {}
+        self.at_translated_files = {}
 
     async def perform_configurate(self, config: ATComponentConfig, auth_token: str = None, *args, **kwargs) -> bool:
         at_solver_item = config.items.get("at_solver")
@@ -73,9 +75,10 @@ class ATJoint(ATComponent):
         process = await self.exec_external_method(
             at_simulation,
             "create_process",
-            {"process_name": at_simulation_file, "file_id": at_simulation_file.data},
+            {"process_name": "runtime_process", "file_id": at_simulation_file.data},
             auth_token=auth_token,
         )
+        self.at_translated_files[auth_token] = at_simulation_file.data
 
         self.at_simulation_processes[auth_token] = process.get("id")
 
@@ -202,8 +205,26 @@ class ATJoint(ATComponent):
     async def debug(self, initiator: str, data: dict, auth_token: str):
         if await self.check_external_registered("ATJointDebugger"):
             await self.exec_external_method(
-                "ATJointDebugger", "debug", {"initiator": initiator, "data": data}, auth_token=auth_token
+                "ATJointDebugger", "debug", {"data": {"initiator": initiator, "data": data}}, auth_token=auth_token
             )
+
+    @authorized_method
+    async def reset(self, auth_token: str = None):
+        auth_token = auth_token or "default"
+        process_id = self.get_at_simulation_process_id(auth_token)
+        c_set = self.get_component_set(auth_token)
+        await self.exec_external_method(
+            c_set.at_simulation, "kill_process", {"process_id": process_id}, auth_token=auth_token
+        )
+        file_id = self.at_translated_files.get(auth_token)
+        process = await self.exec_external_method(
+            c_set.at_simulation,
+            "create_process",
+            {"process_name": "runtime_process", "file_id": file_id},
+            auth_token=auth_token,
+        )
+        self.at_simulation_processes[auth_token] = process.get("id")
+        return True
 
     @authorized_method
     async def stop(self, auth_token: str = None):
@@ -253,7 +274,7 @@ class ATJoint(ATComponent):
             resource_parameters: List[ResourceParameterType] = [
                 {
                     "name": resource["resource_name"],
-                    "parameters": [{key: value for key, value in resource.items() if key != "resource_name"}],
+                    "parameters": {key: value for key, value in resource.items() if key != "resource_name"},
                 }
                 for resource in resources
             ]
