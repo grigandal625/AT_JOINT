@@ -78,16 +78,17 @@ class ATJoint(ATComponent):
             {"process_name": "runtime_process", "file_id": at_simulation_file.data},
             auth_token=auth_token,
         )
-        self.at_translated_files[auth_token] = at_simulation_file.data
+        auth_token_or_user_id = await self.get_user_id_or_token(auth_token, raize_on_failed=False)
+        self.at_translated_files[auth_token_or_user_id] = at_simulation_file.data
 
-        self.at_simulation_processes[auth_token] = process.get("id")
+        self.at_simulation_processes[auth_token_or_user_id] = process.get("id")
 
         at_blackboard_item = config.items.get("at_blackboard")
         at_blackboard = AT_BLACKBOARD
         if at_blackboard_item is not None:
             at_blackboard = at_blackboard_item.data
 
-        return self.create(
+        return await self.create(
             at_solver=at_solver,
             at_temporal_solver=at_temporal_solver,
             at_simulation=at_simulation,
@@ -106,9 +107,10 @@ class ATJoint(ATComponent):
         auth_token: str = None,
         **kwargs
     ) -> bool:
-        return self.has_component_set(auth_token=auth_token)
+        auth_token_or_user_id = await self.get_user_id_or_token(auth_token, raize_on_failed=False)
+        return self.has_component_set(auth_token_or_user_id=auth_token_or_user_id)
 
-    def create(
+    async def create(
         self,
         at_solver: str = AT_SOLVER,
         at_temporal_solver: str = AT_TEMPORAL_SOLVER,
@@ -117,30 +119,31 @@ class ATJoint(ATComponent):
         auth_token: str = None,
     ) -> bool:
         auth_token = auth_token or "default"
+        auth_token_or_user_id = await self.get_user_id_or_token(auth_token, raize_on_failed=False)
         component_set = ComponentSet(at_solver, at_temporal_solver, at_simulation, at_blackboard)
-        self.component_sets[auth_token] = component_set
+        self.component_sets[auth_token_or_user_id] = component_set
         return True
 
-    def get_component_set(self, auth_token):
-        auth_token = auth_token or "default"
-        component_set = self.component_sets.get(auth_token)
+    def get_component_set(self, auth_token_or_user_id):
+        auth_token_or_user_id = auth_token_or_user_id or "default"
+        component_set = self.component_sets.get(auth_token_or_user_id)
         if component_set is None:
             raise ValueError(
-                "Component set (solver, temporal solver, simulation model) for token '%s' is not created" % auth_token
+                "Component set (solver, temporal solver, simulation model) for provided token or uer id is not created"
             )
         return component_set
 
-    def get_stop_command(self, auth_token: str = None):
-        auth_token = auth_token or "default"
-        return self.stop_command.get(auth_token, False)
+    def get_stop_command(self, auth_token_or_user_id: str | int = None):
+        auth_token_or_user_id = auth_token_or_user_id or 'default'
+        return self.stop_command.get(auth_token_or_user_id, False)
 
-    def get_at_simulation_process_id(self, auth_token: str = None):
-        auth_token = auth_token or "default"
-        return self.at_simulation_processes.get(auth_token)
+    def get_at_simulation_process_id(self, auth_token_or_user_id: str = None):
+        auth_token_or_user_id = auth_token_or_user_id or 'default'
+        return self.at_simulation_processes.get(auth_token_or_user_id)
 
-    def has_component_set(self, auth_token: str = None):
+    def has_component_set(self, auth_token_or_user_id: str = None):
         try:
-            self.get_component_set(auth_token)
+            self.get_component_set(auth_token_or_user_id)
             return True
         except ValueError:
             return False
@@ -164,8 +167,8 @@ class ATJoint(ATComponent):
             for key, wm_item in solver_result.get("wm", {}).items()
         ]
 
-    async def process_simulation(self, auth_token: str) -> bool:
-        c_set = self.get_component_set(auth_token)
+    async def process_simulation(self, auth_token: str, auth_token_or_user_id: str | int) -> bool:
+        c_set = self.get_component_set(auth_token_or_user_id)
         if await self.check_external_registered(c_set.at_simulation):
             if await self.check_external_configured(c_set.at_simulation, auth_token=auth_token):
                 tact = await self.exec_external_method(
@@ -177,8 +180,8 @@ class ATJoint(ATComponent):
                 return tact
         return {"resources": []}
 
-    async def process_temporal_solver(self, auth_token: str) -> bool:
-        c_set = self.get_component_set(auth_token)
+    async def process_temporal_solver(self, auth_token: str, auth_token_or_user_id: str | int) -> bool:
+        c_set = self.get_component_set(auth_token_or_user_id)
         if await self.check_external_registered(c_set.at_temporal_solver):
             if await self.check_external_configured(c_set.at_temporal_solver, auth_token=auth_token):
                 await self.exec_external_method(
@@ -191,13 +194,11 @@ class ATJoint(ATComponent):
                 return temporal_result
         return {"wm": {}, "timeline": {"tacts": []}, "signified": {}, "signified_meta": {}}
 
-    async def process_solver(self, auth_token: str):
-        c_set = self.get_component_set(auth_token)
+    async def process_solver(self, auth_token: str, auth_token_or_user_id: str | int):
+        c_set = self.get_component_set(auth_token_or_user_id)
         if await self.check_external_registered(c_set.at_solver):
             if await self.check_external_configured(c_set.at_solver, auth_token=auth_token):
-                c_set = self.get_component_set(auth_token)
                 await self.exec_external_method(c_set.at_solver, "update_wm_from_bb", {}, auth_token=auth_token)
-
                 solver_result = await self.exec_external_method(c_set.at_solver, "run", {}, auth_token=auth_token)
                 return solver_result
         return {"wm": {}, "trace": {"steps": []}}
@@ -211,37 +212,38 @@ class ATJoint(ATComponent):
     @authorized_method
     async def reset(self, auth_token: str = None):
         auth_token = auth_token or "default"
-        process_id = self.get_at_simulation_process_id(auth_token)
-        c_set = self.get_component_set(auth_token)
+        auth_token_or_user_id = await self.get_user_id_or_token(auth_token, raize_on_failed=False)
+        process_id = self.get_at_simulation_process_id(auth_token_or_user_id)
+        c_set = self.get_component_set(auth_token_or_user_id)
         await self.exec_external_method(
             c_set.at_simulation, "kill_process", {"process_id": process_id}, auth_token=auth_token
         )
-        file_id = self.at_translated_files.get(auth_token)
+        file_id = self.at_translated_files.get(auth_token_or_user_id)
         process = await self.exec_external_method(
             c_set.at_simulation,
             "create_process",
             {"process_name": "runtime_process", "file_id": file_id},
             auth_token=auth_token,
         )
-        self.at_simulation_processes[auth_token] = process.get("id")
+        self.at_simulation_processes[auth_token_or_user_id] = process.get("id")
         return True
 
     @authorized_method
-    async def stop(self, auth_token: str = None):
-        auth_token = auth_token or "default"
-        self.stop_command[auth_token] = True
+    async def stop(self, auth_token_or_user_id: str = None):
+        auth_token_or_user_id = auth_token_or_user_id or "default"
+        self.stop_command[auth_token_or_user_id] = True
 
-    async def run_solvers(self, items, c_set: ComponentSet, auth_token: str = None):
+    async def run_solvers(self, items, c_set: ComponentSet, auth_token: str, auth_token_or_user_id: str | int):
         await self.exec_external_method(c_set.at_blackboard, "set_items", {"items": items}, auth_token=auth_token)
 
-        temporal_result = await self.process_temporal_solver(auth_token=auth_token)
+        temporal_result = await self.process_temporal_solver(auth_token=auth_token, auth_token_or_user_id=auth_token_or_user_id)
         await self.debug("at_temporal_solver", temporal_result, auth_token)
         temporal_items = [{"ref": key, "value": value} for key, value in temporal_result.get("signified", {}).items()]
         await self.exec_external_method(
             c_set.at_blackboard, "set_items", {"items": temporal_items}, auth_token=auth_token
         )
 
-        solver_result = await self.process_solver(auth_token)
+        solver_result = await self.process_solver(auth_token, auth_token_or_user_id=auth_token_or_user_id)
         await self.debug("at_solver", solver_result, auth_token)
         solver_items = self._items_from_solver_result(solver_result)
 
@@ -257,18 +259,19 @@ class ATJoint(ATComponent):
 
         result = []
         auth_token = auth_token or "default"
-        self.stop_command[auth_token] = False
-        c_set = self.get_component_set(auth_token)
+        auth_token_or_user_id = await self.get_user_id_or_token(auth_token, raize_on_failed=False)
+        self.stop_command[auth_token_or_user_id] = False
+        c_set = self.get_component_set(auth_token_or_user_id)
 
         solvers_task = loop.create_future()
         solvers_task.set_result(None)
         previous_resource_parameters = None
 
         for tact in range(iterate):
-            if self.get_stop_command(auth_token):
+            if self.get_stop_command(auth_token_or_user_id):
                 break
 
-            tact_data = await self.process_simulation(auth_token=auth_token)
+            tact_data = await self.process_simulation(auth_token=auth_token, auth_token_or_user_id=auth_token_or_user_id)
             resources: List[ResourceMPDict] = tact_data.get("resources", [])
 
             resource_parameters: List[ResourceParameterType] = [
@@ -296,7 +299,7 @@ class ATJoint(ATComponent):
 
             previous_resource_parameters = resource_parameters
 
-            solvers_task = loop.create_task(self.run_solvers(items, c_set, auth_token=auth_token))
+            solvers_task = loop.create_task(self.run_solvers(items, c_set, auth_token=auth_token, auth_token_or_user_id=auth_token_or_user_id))
 
             if iterate > 1:
                 await asyncio.sleep(wait / 1000)
@@ -316,6 +319,7 @@ class ATJoint(ATComponent):
         return result
 
     @authorized_method
-    def get_config(self, auth_token: str) -> dict:
-        c_set = self.get_component_set(auth_token=auth_token)
+    async def get_config(self, auth_token: str) -> dict:
+        auth_token_or_user_id = await self.get_user_id_or_token(auth_token, raize_on_failed=False)
+        c_set = self.get_component_set(auth_token_or_user_id=auth_token_or_user_id)
         return c_set.__dict__
