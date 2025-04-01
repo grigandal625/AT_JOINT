@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument("-u", "--url", help="RabbitMQ URL to connect", required=False, default=None)
 parser.add_argument("-H", "--host", help="RabbitMQ host to connect", required=False, default="localhost")
-parser.add_argument("-p", "--port", help="RabbitMQ port to connect", required=False, default=5672)
+parser.add_argument("-p", "--port", help="RabbitMQ port to connect", type=int, required=False, default=5672)
 parser.add_argument(
     "-L",
     "--login",
