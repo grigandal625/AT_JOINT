@@ -174,7 +174,7 @@ class ATJoint(ATComponent):
                 tact = await self.exec_external_method(
                     c_set.at_simulation,
                     "run_tick",
-                    {"process_id": self.get_at_simulation_process_id(auth_token)},
+                    {"process_id": self.get_at_simulation_process_id(auth_token_or_user_id)},
                     auth_token=auth_token,
                 )
                 return tact
